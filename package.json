@@ -2,6 +2,9 @@
     "name": "hcloud-snipe",
     "type": "module",
     "private": true,
+    "bin": {
+        "hcloud-snipe": "./src/cli.ts"
+    },
     "scripts": {
         "lint": "biome check",
         "format": "biome format --write",
