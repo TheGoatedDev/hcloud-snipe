@@ -1,0 +1,21 @@
+{
+    "name": "hcloud-snipe",
+    "type": "module",
+    "private": true,
+    "scripts": {
+        "lint": "biome check",
+        "format": "biome format --write",
+        "typecheck": "bun check",
+        "schema": "bun scripts/schema.ts"
+    },
+    "devDependencies": {
+        "@biomejs/biome": "^2.5.15",
+        "@types/bun": "latest"
+    },
+    "peerDependencies": {
+        "typescript": "^7.0.2"
+    },
+    "dependencies": {
+        "zod": "^4.6.7"
+    }
+}

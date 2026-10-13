@@ -1,0 +1,180 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+        "$schema": {
+            "type": "string"
+        },
+        "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+        },
+        "poll_interval": {
+            "default": 5,
+            "type": "number",
+            "minimum": 1
+        },
+        "snipes": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+                    },
+                    "count": {
+                        "default": 1,
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 9007199254740991
+                    },
+                    "target": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "pattern": "^[a-z0-9-]+@[a-z0-9-]+$"
+                        }
+                    },
+                    "server": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "default": "{snipe}-{n}",
+                                "type": "string",
+                                "format": "includes",
+                                "pattern": "\\{n\\}"
+                            },
+                            "image": {
+                                "anyOf": [
+                                    {
+                                        "type": "string",
+                                        "minLength": 1
+                                    },
+                                    {
+                                        "type": "integer",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 9007199254740991
+                                    }
+                                ]
+                            },
+                            "ssh_keys": {
+                                "default": [],
+                                "type": "array",
+                                "items": {
+                                    "anyOf": [
+                                        {
+                                            "type": "string",
+                                            "minLength": 1
+                                        },
+                                        {
+                                            "type": "integer",
+                                            "exclusiveMinimum": 0,
+                                            "maximum": 9007199254740991
+                                        }
+                                    ]
+                                }
+                            },
+                            "user_data_file": {
+                                "type": "string",
+                                "minLength": 1
+                            },
+                            "labels": {
+                                "default": {},
+                                "type": "object",
+                                "propertyNames": {
+                                    "type": "string"
+                                },
+                                "additionalProperties": {
+                                    "type": "string"
+                                }
+                            },
+                            "firewalls": {
+                                "default": [],
+                                "type": "array",
+                                "items": {
+                                    "anyOf": [
+                                        {
+                                            "type": "string",
+                                            "minLength": 1
+                                        },
+                                        {
+                                            "type": "integer",
+                                            "exclusiveMinimum": 0,
+                                            "maximum": 9007199254740991
+                                        }
+                                    ]
+                                }
+                            },
+                            "networks": {
+                                "default": [],
+                                "type": "array",
+                                "items": {
+                                    "anyOf": [
+                                        {
+                                            "type": "string",
+                                            "minLength": 1
+                                        },
+                                        {
+                                            "type": "integer",
+                                            "exclusiveMinimum": 0,
+                                            "maximum": 9007199254740991
+                                        }
+                                    ]
+                                }
+                            },
+                            "public_net": {
+                                "default": {
+                                    "enable_ipv4": true,
+                                    "enable_ipv6": true
+                                },
+                                "type": "object",
+                                "properties": {
+                                    "enable_ipv4": {
+                                        "default": true,
+                                        "type": "boolean"
+                                    },
+                                    "enable_ipv6": {
+                                        "default": true,
+                                        "type": "boolean"
+                                    }
+                                },
+                                "additionalProperties": false
+                            },
+                            "placement_group": {
+                                "anyOf": [
+                                    {
+                                        "type": "string",
+                                        "minLength": 1
+                                    },
+                                    {
+                                        "type": "integer",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 9007199254740991
+                                    }
+                                ]
+                            }
+                        },
+                        "required": [
+                            "image"
+                        ],
+                        "additionalProperties": false
+                    }
+                },
+                "required": [
+                    "name",
+                    "target",
+                    "server"
+                ],
+                "additionalProperties": false
+            }
+        }
+    },
+    "required": [
+        "name",
+        "snipes"
+    ],
+    "additionalProperties": false
+}
