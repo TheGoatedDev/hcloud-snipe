@@ -1,10 +1,4 @@
-import {
-    claim,
-    claimSelector,
-    FatalError,
-    type Resolved,
-    resolve,
-} from "./claim";
+import { claim, claimSelector, FatalError, type Resolved } from "./claim";
 import {
     type Hcloud,
     HcloudError,
@@ -12,6 +6,7 @@ import {
     type ServerType,
 } from "./hcloud";
 import type { Candidate, Manifest, Snipe } from "./manifest";
+import { validate } from "./validate";
 
 export type Alert =
     | {
@@ -135,33 +130,32 @@ export async function run({
         (error instanceof HcloudError &&
             (error.status === 401 || error.status === 403));
 
-    // Snipes still waiting for Claims, with their resolved resource IDs.
-    const pending = new Map<Snipe, Resolved>();
-    if (!dryRun) {
-        try {
-            for (const snipe of manifest.snipes) {
-                const claims = await hcloud.servers(
-                    claimSelector(manifest, snipe),
-                );
-                if (claims.length < snipe.count) {
-                    pending.set(snipe, await resolve(hcloud, snipe));
-                }
-            }
-        } catch (error) {
-            return fatal(error);
-        }
-        if (pending.size === 0) {
-            log(`[${manifest.name}] already Fulfilled`);
-            return 0;
-        }
-    }
-
+    // Snipes still waiting for Claims, with their resolved resource IDs. Set up inside the
+    // loop so rate limits and transient errors at startup are retried like any poll.
+    let pending: Map<Snipe, Resolved> | undefined;
     // `snipe/type@location` pairs that were orderable on the previous poll.
     let seen = new Set<string>();
 
     while (!signal?.aborted) {
         let delay = interval;
         try {
+            if (pending === undefined) {
+                const resolved = await validate(hcloud, manifest);
+                pending = new Map();
+                if (!dryRun) {
+                    for (const [snipe, ids] of resolved) {
+                        const claims = await hcloud.servers(
+                            claimSelector(manifest, snipe),
+                        );
+                        if (claims.length < snipe.count)
+                            pending.set(snipe, ids);
+                    }
+                    if (pending.size === 0) {
+                        log(`[${manifest.name}] already Fulfilled`);
+                        return 0;
+                    }
+                }
+            }
             const available = orderable(await hcloud.serverTypes(types));
             if (dryRun) {
                 const current = new Set<string>();

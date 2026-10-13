@@ -22,42 +22,6 @@ export type Resolved = {
     placement_group?: number;
 };
 
-async function resolveId(
-    hcloud: Hcloud,
-    resource: "firewalls" | "networks" | "placement_groups",
-    ref: string | number,
-): Promise<number> {
-    if (typeof ref === "number") return ref;
-    const found = await hcloud.find<{ id: number }>(resource, ref);
-    if (found.length !== 1 || found[0] === undefined) {
-        throw new FatalError(
-            `${resource.replace(/s$/, "").replace("_", " ")} "${ref}" not found`,
-        );
-    }
-    return found[0].id;
-}
-
-export async function resolve(hcloud: Hcloud, snipe: Snipe): Promise<Resolved> {
-    const { firewalls, networks, placement_group } = snipe.server;
-    return {
-        firewalls: await Promise.all(
-            firewalls.map((f) => resolveId(hcloud, "firewalls", f)),
-        ),
-        networks: await Promise.all(
-            networks.map((n) => resolveId(hcloud, "networks", n)),
-        ),
-        ...(placement_group === undefined
-            ? {}
-            : {
-                  placement_group: await resolveId(
-                      hcloud,
-                      "placement_groups",
-                      placement_group,
-                  ),
-              }),
-    };
-}
-
 export const claimSelector = (manifest: Manifest, snipe: Snipe) =>
     `${MANIFEST_LABEL}=${manifest.name},${SNIPE_LABEL}=${snipe.name}`;
 

@@ -170,6 +170,15 @@ export function createHcloud({
                 : items.filter((t) => unique.includes(t.name));
         },
 
+        async locations(): Promise<{ name: string; network_zone: string }[]> {
+            return (
+                await list<"locations", { name: string; network_zone: string }>(
+                    "locations",
+                    "/locations",
+                )
+            ).items;
+        },
+
         async servers(labelSelector: string): Promise<Server[]> {
             return (
                 await list<"servers", Server>("servers", "/servers", {

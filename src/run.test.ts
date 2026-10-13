@@ -89,7 +89,7 @@ const stock =
     ) =>
     () => {
         fake.state.serverTypes = [
-            serverType("cax31", cax31, 1),
+            serverType("cax31", { fsn1: false, nbg1: false, ...cax31 }, 1),
             serverType("ccx13", ccx13, 2),
         ];
     };
@@ -254,6 +254,10 @@ describe("claiming", () => {
     const posts = () => fake.state.requests.filter((r) => r.startsWith("POST"));
 
     test("claims the best Sighted Candidate and exits Fulfilled", async () => {
+        fake.state.resources.ssh_keys = [
+            { id: 41, name: "laptop" },
+            { id: 42, name: "desktop" },
+        ];
         const m = lab(
             snipe({
                 server: {
@@ -416,8 +420,17 @@ describe("claiming", () => {
     });
 
     test("resolves resource names and reads user_data_file", async () => {
-        fake.state.resources.firewalls = [{ id: 7, name: "web" }];
-        fake.state.resources.networks = [{ id: 9, name: "net-eu" }];
+        fake.state.resources.firewalls = [
+            { id: 7, name: "web" },
+            { id: 8, name: "ssh" },
+        ];
+        fake.state.resources.networks = [
+            {
+                id: 9,
+                name: "net-eu",
+                subnets: [{ network_zone: "eu-central" }],
+            },
+        ];
         fake.state.resources.placement_groups = [{ id: 3, name: "spread" }];
         const userData = join(
             await mkdtemp(join(tmpdir(), "hcloud-snipe-")),
@@ -453,10 +466,10 @@ describe("claiming", () => {
             m,
         });
         expect(code).toBe(1);
-        expect(formatted).toEqual(['[lab] Fatal: firewall "nope" not found']);
-        expect(
-            fake.state.requests.some((r) => r.includes("server_types")),
-        ).toBe(false);
+        expect(formatted).toEqual([
+            '[lab] Fatal: invalid Manifest lab:\n  - snipe web: firewall "nope" not found',
+        ]);
+        expect(posts()).toEqual([]);
     });
 
     test("never creates in a Dry run", async () => {

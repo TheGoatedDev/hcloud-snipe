@@ -17,8 +17,19 @@ export function startFakeHcloud({ perPage = 50 }: { perPage?: number } = {}) {
     const state = {
         serverTypes: [] as ServerType[],
         servers: [] as Server[],
+        locations: [
+            { name: "fsn1", network_zone: "eu-central" },
+            { name: "nbg1", network_zone: "eu-central" },
+            { name: "hel1", network_zone: "eu-central" },
+            { name: "ash", network_zone: "us-east" },
+            { name: "hil", network_zone: "us-west" },
+            { name: "sin", network_zone: "ap-southeast" },
+        ],
         resources: {
-            images: [],
+            images: [
+                { id: 1001, name: "ubuntu-24.04", architecture: "x86" },
+                { id: 1002, name: "ubuntu-24.04", architecture: "arm" },
+            ],
             ssh_keys: [],
             firewalls: [],
             networks: [],
@@ -127,6 +138,9 @@ export function startFakeHcloud({ perPage = 50 }: { perPage?: number } = {}) {
                 url,
             );
         }
+        if (path === "/locations" && req.method === "GET") {
+            return page("locations", state.locations, url);
+        }
         if (path === "/servers" && req.method === "GET") {
             const selector = url.searchParams.get("label_selector");
             return page(
@@ -153,9 +167,15 @@ export function startFakeHcloud({ perPage = 50 }: { perPage?: number } = {}) {
                     ? Response.json({ [resource.replace(/s$/, "")]: found })
                     : err(404, "not_found");
             }
+            // Filter on any query param that is also a field, e.g. name or architecture.
+            const filters = [...url.searchParams].filter(([k]) =>
+                all.some((r) => k in r),
+            );
             return page(
                 resource,
-                all.filter((r) => name === null || r.name === name),
+                all.filter((r) =>
+                    filters.every(([k, v]) => String(r[k]) === v),
+                ),
                 url,
             );
         }
