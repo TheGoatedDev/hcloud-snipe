@@ -1,11 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
     type FakeHcloud,
     serverType,
     startFakeHcloud,
 } from "../test/fake-hcloud";
+import { nextName } from "./claim";
 import { createHcloud } from "./hcloud";
-import { manifest as manifestSchema } from "./manifest";
+import { type Manifest, manifest as manifestSchema } from "./manifest";
 import {
     type Alert,
     formatAlert,
@@ -38,7 +42,14 @@ beforeEach(() => {
 afterEach(() => fake.stop());
 
 /** Runs one poll per entry in `ticks`; each entry sets stock before that poll. */
-async function runTicks(ticks: (() => void)[], token = fake.token) {
+async function runTicks(
+    ticks: (() => void)[],
+    {
+        token = fake.token,
+        dryRun = true,
+        m = manifest,
+    }: { token?: string; dryRun?: boolean; m?: Manifest } = {},
+) {
     const alerts: Alert[] = [];
     const delays: number[] = [];
     const logs: string[] = [];
@@ -46,7 +57,8 @@ async function runTicks(ticks: (() => void)[], token = fake.token) {
     let tick = 0;
     ticks[0]?.();
     const code = await run({
-        manifest,
+        manifest: m,
+        dryRun,
         hcloud: createHcloud({ token, baseUrl: fake.baseUrl }),
         alert: (a) => {
             alerts.push(a);
@@ -65,7 +77,8 @@ async function runTicks(ticks: (() => void)[], token = fake.token) {
         alerts,
         delays,
         logs,
-        sightings: alerts.map((a) => a.kind === "sighting" && formatAlert(a)),
+        sightings: alerts.filter((a) => a.kind === "sighting").map(formatAlert),
+        formatted: alerts.map(formatAlert),
     };
 }
 
@@ -125,10 +138,9 @@ describe("run", () => {
     });
 
     test("exits with a fatal Alert on a bad token", async () => {
-        const { code, alerts } = await runTicks(
-            [stock({ fsn1: true })],
-            "wrong",
-        );
+        const { code, alerts } = await runTicks([stock({ fsn1: true })], {
+            token: "wrong",
+        });
         expect(code).toBe(1);
         expect(alerts).toEqual([
             {
@@ -214,4 +226,260 @@ describe("delays", () => {
         expect(rateLimitedDelay(5000, reset(-5), now)).toBe(5000);
         expect(rateLimitedDelay(5000, undefined, now)).toBe(60_000);
     });
+});
+
+describe("claiming", () => {
+    const snipe = (overrides: Record<string, unknown> = {}) => ({
+        name: "web",
+        target: ["cax31@fsn1", "cax31@nbg1"],
+        server: { image: "ubuntu-24.04" },
+        ...overrides,
+    });
+    const lab = (...snipes: Record<string, unknown>[]) =>
+        manifestSchema.parse({ name: "lab", snipes });
+    const labels = (snipeName: string) => ({
+        "hcloud-snipe/manifest": "lab",
+        "hcloud-snipe/snipe": snipeName,
+    });
+    const existing = (name: string, serverLabels: Record<string, string>) => {
+        fake.state.servers.push({
+            id: fake.state.nextId++,
+            name,
+            labels: serverLabels,
+            server_type: { name: "cax31" },
+            location: { name: "fsn1" },
+            public_net: { ipv4: null, ipv6: null },
+        });
+    };
+    const posts = () => fake.state.requests.filter((r) => r.startsWith("POST"));
+
+    test("claims the best Sighted Candidate and exits Fulfilled", async () => {
+        const m = lab(
+            snipe({
+                server: {
+                    image: "ubuntu-24.04",
+                    ssh_keys: ["laptop", 42],
+                    labels: { env: "prod" },
+                    public_net: { enable_ipv4: false },
+                },
+            }),
+        );
+        const { code, formatted } = await runTicks(
+            [
+                stock({ fsn1: false, nbg1: false }),
+                stock({ fsn1: true, nbg1: true }),
+                () => {},
+            ],
+            { dryRun: false, m },
+        );
+        expect(code).toBe(0);
+        expect(formatted).toEqual([
+            "[lab] Claim: web-1 on cax31@fsn1 (snipe web) 2001:db8:1::/64",
+            "[lab] Snipe web Fulfilled",
+            "[lab] Manifest Fulfilled",
+        ]);
+        expect(fake.state.created).toEqual([
+            {
+                name: "web-1",
+                server_type: "cax31",
+                location: "fsn1",
+                image: "ubuntu-24.04",
+                ssh_keys: ["laptop", "42"],
+                labels: { env: "prod", ...labels("web") },
+                firewalls: [],
+                networks: [],
+                public_net: { enable_ipv4: false, enable_ipv6: true },
+            },
+        ]);
+    });
+
+    test("moves to the next Candidate after a lost race", async () => {
+        fake.state.createErrors.push({
+            status: 412,
+            code: "resource_unavailable",
+        });
+        const { code, formatted, logs } = await runTicks(
+            [stock({ fsn1: true, nbg1: true })],
+            { dryRun: false, m: lab(snipe()) },
+        );
+        expect(code).toBe(0);
+        expect(formatted[0]).toStartWith("[lab] Claim: web-1 on cax31@nbg1");
+        expect(logs).toEqual([
+            "lost race for cax31@fsn1 (snipe web): resource_unavailable",
+        ]);
+    });
+
+    test("waits for the next poll when every Sighted Candidate is lost", async () => {
+        fake.state.createErrors.push({ status: 422, code: "placement_error" });
+        const { code, formatted } = await runTicks(
+            [stock({ fsn1: true, nbg1: false }), () => {}],
+            { dryRun: false, m: lab(snipe()) },
+        );
+        expect(code).toBe(0);
+        expect(posts()).toHaveLength(2);
+        expect(formatted[0]).toStartWith("[lab] Claim: web-1 on cax31@fsn1");
+    });
+
+    test("claims up to count in one poll", async () => {
+        const { formatted } = await runTicks(
+            [stock({ fsn1: true, nbg1: true })],
+            { dryRun: false, m: lab(snipe({ count: 2 })) },
+        );
+        expect(formatted.slice(0, 2)).toEqual([
+            "[lab] Claim: web-1 on cax31@fsn1 (snipe web) 198.51.100.1, 2001:db8:1::/64",
+            "[lab] Claim: web-2 on cax31@fsn1 (snipe web) 198.51.100.2, 2001:db8:2::/64",
+        ]);
+        expect(posts()).toHaveLength(2);
+    });
+
+    test("exits quietly when already Fulfilled at startup", async () => {
+        existing("web-1", labels("web"));
+        const { code, alerts, logs } = await runTicks([stock({ fsn1: true })], {
+            dryRun: false,
+            m: lab(snipe()),
+        });
+        expect(code).toBe(0);
+        expect(alerts).toEqual([]);
+        expect(logs).toEqual(["[lab] already Fulfilled"]);
+        expect(posts()).toEqual([]);
+    });
+
+    test("counts earlier Claims and skips their names", async () => {
+        existing("web-1", labels("web"));
+        existing("web-2", labels("other")); // unlabelled for this Snipe
+        const { formatted } = await runTicks([stock({ fsn1: true })], {
+            dryRun: false,
+            m: lab(snipe({ count: 2 })),
+        });
+        expect(formatted[0]).toStartWith("[lab] Claim: web-3 on cax31@fsn1");
+        expect(posts()).toHaveLength(2); // web-2 hit uniqueness_error first
+    });
+
+    test("does not count servers from another Manifest", async () => {
+        existing("web-1", {
+            ...labels("web"),
+            "hcloud-snipe/manifest": "prod",
+        });
+        const { formatted } = await runTicks([stock({ fsn1: true })], {
+            dryRun: false,
+            m: lab(snipe()),
+        });
+        expect(formatted[0]).toStartWith("[lab] Claim: web-2");
+    });
+
+    test("waits for every Snipe before the Manifest is Fulfilled", async () => {
+        const m = lab(snipe(), snipe({ name: "db", target: ["ccx13@fsn1"] }));
+        const { code, formatted } = await runTicks(
+            [
+                stock({ fsn1: true }),
+                stock({ fsn1: false }, { fsn1: true }),
+                () => {},
+            ],
+            { dryRun: false, m },
+        );
+        expect(code).toBe(0);
+        expect(formatted.map((f) => f.split(" (")[0])).toEqual([
+            "[lab] Claim: web-1 on cax31@fsn1",
+            "[lab] Snipe web Fulfilled",
+            "[lab] Claim: db-1 on ccx13@fsn1",
+            "[lab] Snipe db Fulfilled",
+            "[lab] Manifest Fulfilled",
+        ]);
+    });
+
+    test("stops with a fatal Alert when the project quota is hit", async () => {
+        fake.state.createErrors.push({
+            status: 403,
+            code: "resource_limit_exceeded",
+        });
+        const { code, formatted } = await runTicks(
+            [stock({ fsn1: true }), () => {}],
+            { dryRun: false, m: lab(snipe()) },
+        );
+        expect(code).toBe(1);
+        expect(formatted).toEqual([
+            "[lab] Fatal: creating web-1: resource_limit_exceeded: resource_limit_exceeded",
+        ]);
+        expect(fake.state.created).toEqual([]);
+    });
+
+    test("retries on the next poll after a server error", async () => {
+        fake.state.createErrors.push({ status: 503, code: "unavailable" });
+        const { code, formatted, logs } = await runTicks(
+            [stock({ fsn1: true, nbg1: true }), () => {}],
+            { dryRun: false, m: lab(snipe()) },
+        );
+        expect(code).toBe(0);
+        expect(logs).toEqual(["poll failed: unavailable: unavailable"]);
+        expect(formatted[0]).toStartWith("[lab] Claim: web-1 on cax31@fsn1");
+        expect(fake.state.created).toHaveLength(1);
+    });
+
+    test("resolves resource names and reads user_data_file", async () => {
+        fake.state.resources.firewalls = [{ id: 7, name: "web" }];
+        fake.state.resources.networks = [{ id: 9, name: "net-eu" }];
+        fake.state.resources.placement_groups = [{ id: 3, name: "spread" }];
+        const userData = join(
+            await mkdtemp(join(tmpdir(), "hcloud-snipe-")),
+            "init.yaml",
+        );
+        await writeFile(userData, "#cloud-config\n");
+        const m = lab(
+            snipe({
+                server: {
+                    image: "ubuntu-24.04",
+                    firewalls: ["web", 8],
+                    networks: ["net-eu"],
+                    placement_group: "spread",
+                    user_data_file: userData,
+                },
+            }),
+        );
+        await runTicks([stock({ fsn1: true })], { dryRun: false, m });
+        expect(fake.state.created[0]).toMatchObject({
+            firewalls: [{ firewall: 7 }, { firewall: 8 }],
+            networks: [9],
+            placement_group: 3,
+            user_data: "#cloud-config\n",
+        });
+    });
+
+    test("fails at startup when a named resource is missing", async () => {
+        const m = lab(
+            snipe({ server: { image: "ubuntu-24.04", firewalls: ["nope"] } }),
+        );
+        const { code, formatted } = await runTicks([stock({ fsn1: true })], {
+            dryRun: false,
+            m,
+        });
+        expect(code).toBe(1);
+        expect(formatted).toEqual(['[lab] Fatal: firewall "nope" not found']);
+        expect(
+            fake.state.requests.some((r) => r.includes("server_types")),
+        ).toBe(false);
+    });
+
+    test("never creates in a Dry run", async () => {
+        const { sightings } = await runTicks([stock({ fsn1: true })], {
+            m: lab(snipe()),
+        });
+        expect(sightings).toHaveLength(1);
+        expect(posts()).toEqual([]);
+    });
+});
+
+test("nextName picks the lowest free index", () => {
+    const s = manifestSchema.parse({
+        name: "lab",
+        snipes: [
+            {
+                name: "web",
+                target: ["cax31@fsn1"],
+                server: { image: "x", name: "{snipe}{n}.lab" },
+            },
+        ],
+    }).snipes[0];
+    if (!s) throw new Error("unreachable");
+    expect(nextName(s, new Set())).toBe("web1.lab");
+    expect(nextName(s, new Set(["web1.lab", "web3.lab"]))).toBe("web2.lab");
 });

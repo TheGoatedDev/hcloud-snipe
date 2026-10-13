@@ -29,6 +29,8 @@ export function startFakeHcloud({ perPage = 50 }: { perPage?: number } = {}) {
         >,
         /** Errors returned by the next POST /servers calls, in order. */
         createErrors: [] as { status: number; code: string }[],
+        /** Bodies of every successful POST /servers. */
+        created: [] as CreateServerBody[],
         rateLimit: { limit: 3600, remaining: 3600, reset: 0 },
         /** `METHOD /path?query` of every request received. */
         requests: [] as string[],
@@ -100,6 +102,7 @@ export function startFakeHcloud({ perPage = 50 }: { perPage?: number } = {}) {
             },
         };
         state.servers.push(server);
+        state.created.push(body);
         return Response.json({ server }, { status: 201 });
     }
 
