@@ -1,9 +1,31 @@
 {
     "name": "hcloud-snipe",
+    "version": "0.1.0",
+    "description": "Create Hetzner Cloud servers the moment a sold-out server type comes back in stock",
+    "license": "MIT",
+    "author": "Thomas Burridge",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/TheGoatedDev/hcloud-snipe.git"
+    },
+    "keywords": [
+        "hetzner",
+        "hcloud",
+        "hetzner-cloud",
+        "availability",
+        "cli"
+    ],
     "type": "module",
-    "private": true,
     "bin": {
         "hcloud-snipe": "./src/cli.ts"
+    },
+    "files": [
+        "src",
+        "!src/**/*.test.ts",
+        "manifest.schema.json"
+    ],
+    "engines": {
+        "bun": ">=1.4"
     },
     "scripts": {
         "lint": "biome check",
@@ -15,9 +37,6 @@
         "@biomejs/biome": "^2.5.15",
         "@types/bun": "latest",
         "@types/nodemailer": "^8.0.2"
-    },
-    "peerDependencies": {
-        "typescript": "^7.0.2"
     },
     "dependencies": {
         "nodemailer": "^10.1.0",

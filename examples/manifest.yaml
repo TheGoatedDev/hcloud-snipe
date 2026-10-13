@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/TheGoatedDev/hcloud-snipe/main/manifest.schema.json
+name: homelab
+poll_interval: 5 # seconds
+
+snipes:
+  # Two Arm boxes; take Falkenstein, fall back to Nuremberg, then a bigger type.
+  - name: web
+    count: 2
+    target:
+      - cax21@fsn1
+      - cax21@nbg1
+      - cax31@fsn1
+    server:
+      image: ubuntu-24.04
+      ssh_keys: [laptop]
+      user_data_file: ./cloud-init.yaml
+      labels: { role: web }
+      firewalls: [web]
+      networks: [homelab-eu]
+
+  # One dedicated-vCPU box, IPv6 only (no billed Primary IPv4).
+  - name: db
+    target: [ccx13@fsn1, ccx13@nbg1]
+    server:
+      image: ubuntu-24.04
+      ssh_keys: [laptop]
+      networks: [homelab-eu]
+      public_net: { enable_ipv4: false }
