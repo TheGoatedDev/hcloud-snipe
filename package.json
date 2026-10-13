@@ -13,12 +13,14 @@
     },
     "devDependencies": {
         "@biomejs/biome": "^2.5.15",
-        "@types/bun": "latest"
+        "@types/bun": "latest",
+        "@types/nodemailer": "^8.0.2"
     },
     "peerDependencies": {
         "typescript": "^7.0.2"
     },
     "dependencies": {
+        "nodemailer": "^10.1.0",
         "zod": "^4.6.7"
     }
 }

@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 import { parseArgs } from "node:util";
+import { channelsFromEnv, createAlerter } from "./alerts";
 import { createHcloud } from "./hcloud";
 import { loadManifest } from "./manifest";
-import { formatAlert, run } from "./run";
+import { run } from "./run";
 
 const usage = "usage: hcloud-snipe <manifest.yaml> [--dry-run]";
 
@@ -39,6 +40,17 @@ const manifest = await loadManifest(path).catch((error: unknown) => {
     process.exit(2);
 });
 
+let channels: ReturnType<typeof channelsFromEnv>;
+try {
+    channels = channelsFromEnv();
+} catch (error) {
+    console.error(
+        `Invalid alert config: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exit(2);
+}
+const alerter = createAlerter(channels);
+
 // Explicit handlers: as PID 1 in Docker, unhandled SIGTERM is ignored.
 for (const sig of ["SIGINT", "SIGTERM"] as const) {
     process.on(sig, () => process.exit(0));
@@ -46,14 +58,13 @@ for (const sig of ["SIGINT", "SIGTERM"] as const) {
 
 const dryRun = values["dry-run"];
 console.error(
-    `[${manifest.name}] ${dryRun ? "Dry run: " : ""}polling every ${manifest.poll_interval}s`,
+    `[${manifest.name}] ${dryRun ? "Dry run: " : ""}polling every ${manifest.poll_interval}s; alerts: ${["stdout", ...channels.map((c) => c.name)].join(", ")}`,
 );
-process.exit(
-    await run({
-        manifest,
-        hcloud: createHcloud({ token }),
-        dryRun,
-        alert: (alert) =>
-            console.log(`${new Date().toISOString()} ${formatAlert(alert)}`),
-    }),
-);
+const code = await run({
+    manifest,
+    hcloud: createHcloud({ token }),
+    dryRun,
+    alert: alerter.alert,
+});
+await alerter.flush();
+process.exit(code);
