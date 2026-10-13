@@ -1,20 +1,32 @@
 #!/usr/bin/env bun
 import { parseArgs } from "node:util";
+import { z } from "zod";
 import { channelsFromEnv, createAlerter } from "./alerts";
+import { manifestFromFlags, options, usage } from "./flags";
 import { createHcloud } from "./hcloud";
-import { loadManifest } from "./manifest";
+import { loadManifest, parseManifest } from "./manifest";
 import { run } from "./run";
 
-const usage = "usage: hcloud-snipe <manifest.yaml> [--dry-run]";
+function fail(message: string): never {
+    console.error(message);
+    process.exit(2);
+}
 
-const { values, positionals } = parseArgs({
-    args: Bun.argv.slice(2),
-    options: {
-        "dry-run": { type: "boolean", default: false },
-        help: { type: "boolean", short: "h", default: false },
-    },
-    allowPositionals: true,
-});
+let parsed: ReturnType<
+    typeof parseArgs<{ options: typeof options; allowPositionals: true }>
+>;
+try {
+    parsed = parseArgs({
+        args: Bun.argv.slice(2),
+        options,
+        allowPositionals: true,
+    });
+} catch (error) {
+    fail(
+        `${error instanceof Error ? error.message : String(error)}\n\n${usage}`,
+    );
+}
+const { values, positionals } = parsed;
 
 if (values.help) {
     console.log(usage);
@@ -22,23 +34,28 @@ if (values.help) {
 }
 
 const [path] = positionals;
-if (path === undefined || positionals.length > 1) {
-    console.error(usage);
-    process.exit(2);
+const oneOff = values.target !== undefined;
+if (positionals.length > 1 || (path === undefined) === !oneOff) {
+    fail(`Pass either a Manifest file or --target, not both.\n\n${usage}`);
 }
 
 const token = process.env.HCLOUD_TOKEN;
-if (!token) {
-    console.error("HCLOUD_TOKEN is not set.");
-    process.exit(2);
-}
+if (!token) fail("HCLOUD_TOKEN is not set.");
 
-const manifest = await loadManifest(path).catch((error: unknown) => {
-    console.error(
-        `Invalid Manifest ${path}:\n${error instanceof Error ? error.message : String(error)}`,
-    );
-    process.exit(2);
-});
+const manifest = await (path === undefined
+    ? parseManifest(manifestFromFlags(values), process.cwd())
+    : loadManifest(path)
+).catch((error: unknown) =>
+    fail(
+        `Invalid ${path === undefined ? "flags" : `Manifest ${path}`}:\n${
+            error instanceof z.ZodError
+                ? z.prettifyError(error)
+                : error instanceof Error
+                  ? error.message
+                  : String(error)
+        }`,
+    ),
+);
 
 let channels: ReturnType<typeof channelsFromEnv>;
 try {

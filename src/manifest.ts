@@ -86,15 +86,15 @@ export const manifest = z.strictObject({
 
 export type Manifest = z.output<typeof manifest>;
 
-/** Parses a Manifest file; user_data_file paths become absolute and must exist. */
-export async function loadManifest(path: string): Promise<Manifest> {
-    const parsed = manifest.parse(Bun.YAML.parse(await Bun.file(path).text()));
+/** Parses a Manifest; user_data_file paths are resolved against `baseDir` and must exist. */
+export async function parseManifest(
+    raw: unknown,
+    baseDir: string,
+): Promise<Manifest> {
+    const parsed = manifest.parse(raw);
     for (const s of parsed.snipes) {
         if (s.server.user_data_file === undefined) continue;
-        s.server.user_data_file = resolve(
-            dirname(path),
-            s.server.user_data_file,
-        );
+        s.server.user_data_file = resolve(baseDir, s.server.user_data_file);
         if (!(await Bun.file(s.server.user_data_file).exists())) {
             throw new Error(
                 `snipe ${s.name}: user_data_file not found: ${s.server.user_data_file}`,
@@ -102,4 +102,12 @@ export async function loadManifest(path: string): Promise<Manifest> {
         }
     }
     return parsed;
+}
+
+/** Parses a Manifest file; user_data_file paths are relative to the file. */
+export async function loadManifest(path: string): Promise<Manifest> {
+    return parseManifest(
+        Bun.YAML.parse(await Bun.file(path).text()),
+        dirname(path),
+    );
 }
