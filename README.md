@@ -7,17 +7,13 @@ Hetzner Cloud keeps running out of the cheap server types (CX, CAX, some CCX siz
 
 ## Install
 
-hcloud-snipe runs on [Bun](https://bun.com) 1.4 or newer.
-
-```sh
-bunx hcloud-snipe --help
-```
-
-Or use the Docker image (linux/amd64 and linux/arm64):
+hcloud-snipe ships as a Docker image for linux/amd64 and linux/arm64:
 
 ```sh
 docker run --rm ghcr.io/thegoateddev/hcloud-snipe --help
 ```
+
+To run from source instead, install [Bun](https://bun.com) 1.4 or newer, clone this repo, run `bun install`, and use `bun src/cli.ts` wherever the examples below use the image.
 
 Create an API token with read/write access in the Hetzner Console (your project, Security, API tokens) and export it as `HCLOUD_TOKEN`.
 
@@ -27,16 +23,18 @@ Tell me when a `cax21` can be ordered in Falkenstein or Nuremberg:
 
 ```sh
 export HCLOUD_TOKEN=...
-bunx hcloud-snipe --target cax21@fsn1,cax21@nbg1 --dry-run
+docker run --rm -it -e HCLOUD_TOKEN ghcr.io/thegoateddev/hcloud-snipe \
+  --target cax21@fsn1,cax21@nbg1 --dry-run
 ```
 
 Create one as soon as it can be:
 
 ```sh
-bunx hcloud-snipe --target cax21@fsn1,cax21@nbg1 --ssh-key laptop
+docker run --rm -it -e HCLOUD_TOKEN ghcr.io/thegoateddev/hcloud-snipe \
+  --target cax21@fsn1,cax21@nbg1 --ssh-key laptop
 ```
 
-The process exits 0 once the server exists. Run `hcloud-snipe --help` for every flag.
+The container exits 0 once the server exists. Pass `--help` for every flag.
 
 ## Manifests
 
@@ -65,9 +63,11 @@ snipes:
       public_net: { enable_ipv4: false }
 ```
 
+Mount the directory holding the Manifest (and any `user_data_file` it references):
+
 ```sh
-hcloud-snipe manifest.yaml --dry-run
-hcloud-snipe manifest.yaml
+docker run --rm -it -e HCLOUD_TOKEN -v "$PWD:/config:ro" \
+  ghcr.io/thegoateddev/hcloud-snipe /config/manifest.yaml --dry-run
 ```
 
 See [`examples/manifest.yaml`](examples/manifest.yaml). The `server` fields follow Hetzner's `POST /servers` body. Images, SSH keys, firewalls, networks and placement groups can be given by name or numeric ID. Servers are named `{snipe}-{n}` (`web-1`, `web-2`) unless you set `server.name`, which must contain `{n}`.

@@ -48,16 +48,3 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  npm:
-    needs: check
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write # npm trusted publishing (OIDC), no NPM_TOKEN secret
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          registry-url: https://registry.npmjs.org
-      - run: npm publish --provenance --access public
