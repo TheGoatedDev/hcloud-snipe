@@ -1,8 +1,36 @@
-<img src="docs/logo.svg" width="96" alt="">
+<div align="center">
+
+<img src="docs/logo.svg" width="112" alt="">
 
 # hcloud-snipe
 
+**Create Hetzner Cloud servers the moment a sold-out type comes back in stock.**
+
+[![CI](https://github.com/TheGoatedDev/hcloud-snipe/actions/workflows/ci.yml/badge.svg)](https://github.com/TheGoatedDev/hcloud-snipe/actions/workflows/ci.yml) [![Docker image](https://img.shields.io/badge/ghcr.io-hcloud--snipe-e5243b?logo=docker&logoColor=white)](https://github.com/TheGoatedDev/hcloud-snipe/pkgs/container/hcloud-snipe) [![Platforms](https://img.shields.io/badge/platform-amd64%20%7C%20arm64-14161a)](#install) [![License: MIT](https://img.shields.io/badge/license-MIT-14161a)](LICENSE)
+
+[Quick start](#quick-start) · [Manifests](#manifests) · [How it works](#how-it-works) · [Alerts](#alerts) · [Docker Compose](#docker-compose)
+
+</div>
+
+<br>
+
+```console
+$ docker run --rm -e HCLOUD_TOKEN -v "$PWD:/config:ro" \
+    ghcr.io/thegoateddev/hcloud-snipe /config/manifest.yaml
+[homelab] polling every 5s; alerts: stdout, ntfy
+lost race for cax21@fsn1 (snipe web): resource_unavailable
+2026-10-15T07:12:03.114Z [homelab] Claim: web-1 on cax21@nbg1 (snipe web) 198.51.100.7, 2001:db8:7::/64
+2026-10-15T07:12:04.902Z [homelab] Claim: web-2 on cax21@nbg1 (snipe web) 198.51.100.8, 2001:db8:8::/64
+2026-10-15T07:12:04.903Z [homelab] Snipe web Fulfilled
+```
+
 Hetzner Cloud keeps running out of the cheap server types (CX, CAX, some CCX sizes in some locations). hcloud-snipe polls the Hetzner Cloud API and creates the servers you asked for as soon as one of your acceptable type/location pairs can be ordered again.
+
+- **Ranked fallbacks.** List the type/location pairs you'd accept, best first. It takes the best one in stock.
+- **Never over-buys.** Every server it creates is labelled and counted before the next create, so restarts and crashes can't push you past `count`.
+- **Checks before it waits.** Unknown types, wrong locations, missing SSH keys, firewalls or images, and network-zone mismatches fail at startup, not three days later.
+- **Alerts where you look.** Discord, Slack, Telegram, ntfy, email or any webhook.
+- **Polite to your API budget.** One or two requests per poll, with automatic back-off near the 3600/hour project limit.
 
 > [!WARNING]
 > Without `--dry-run`, hcloud-snipe creates real servers on your account, and Hetzner bills each one for at least an hour. Start with `--dry-run` to check your setup and see how often stock appears.
