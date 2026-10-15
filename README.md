@@ -1,3 +1,5 @@
+<img src="docs/logo.svg" width="96" alt="">
+
 # hcloud-snipe
 
 Hetzner Cloud keeps running out of the cheap server types (CX, CAX, some CCX sizes in some locations). hcloud-snipe polls the Hetzner Cloud API and creates the servers you asked for as soon as one of your acceptable type/location pairs can be ordered again.
